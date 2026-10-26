@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// A client for the Authorize.net JSON API (the modern `request.api` endpoint).
 ///
