@@ -1,5 +1,8 @@
 import Testing
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 @testable import PerfectAuthNet
 
 // MARK: - URLProtocol mock (captures the outgoing request, returns a canned response)
