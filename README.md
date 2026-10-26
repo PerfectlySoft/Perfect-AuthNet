@@ -1,20 +1,31 @@
-# Perfect-AuthNet
+# Perfect AuthNet
 
-A small, clean-room Swift 6 client for the [Authorize.net](https://developer.authorize.net/) payment gateway.
+<p align="center">
+    <img src="https://img.shields.io/badge/Swift-6.2%2B-orange.svg?style=flat" alt="Swift 6.2+">
+    <img src="https://img.shields.io/badge/Platforms-macOS%2012%2B%20%7C%20Linux-lightgray.svg?style=flat" alt="Platforms macOS 12+ | Linux">
+    <a href="LICENSE" target="_blank">
+        <img src="https://img.shields.io/badge/License-Apache%202.0-lightgrey.svg?style=flat" alt="License Apache 2.0">
+    </a>
+</p>
 
-**Requirements:** Swift tools 6.2, macOS 26 (Tahoe) — the only platform currently declared in `Package.swift`. No iOS/watchOS/tvOS/Linux target is declared yet, so despite the "mobile and web storefronts" framing below (describing the *payment flows* it supports, i.e. Accept.js/Accept Mobile nonces — not that the package itself runs on iOS today), this only builds on macOS 26+ for now.
+A small Swift client for the [Authorize.net](https://developer.authorize.net/) payment gateway's
+JSON API (`request.api`). It doesn't support the legacy AIM/SIM name-value interface.
 
-**Status:** staged, unintegrated infrastructure. This package has zero consumers in the Perfect-Resurrection ecosystem right now — no other package depends on or imports it, and the Lasso site's own code does not call into it either. Authorize.net gateway calls in that codebase currently go through raw `Pair()`/`include_url` natives directly in `includes/efs_process.lasso`, exercised during Perfect-Lasso's validation testing (a Swift reimplementation of the Lasso language, still in active development and not yet production-ready — sandbox gateway only, no real transactions). Perfect-AuthNet is meant to eventually formalize/replace that ad-hoc integration with a proper native Swift client; it is planned future work, not dead code.
+- No package dependencies: Foundation only (`URLSession` and `Codable`).
+- Charges Accept.js and Accept Mobile payment nonces (`opaqueData`), so raw card numbers never
+  reach your server.
+- Swift 6 strict concurrency; every public type is `Sendable`.
 
-- **Zero dependencies** — Foundation only (`URLSession` + `Codable`).
-- Targets the **modern Authorize.net JSON API** (`request.api`), not the legacy AIM/SIM name-value interface.
-- Supports **mobile and web storefront payment flows**: charge Accept.js / Accept Mobile payment nonces (`opaqueData`) so raw card numbers never touch your backend.
-- Swift 6 strict concurrency; everything is `Sendable`.
+## Requirements
 
-## Install
+- Swift 6.2 or later (`swift-tools-version: 6.2`, Swift 6 language mode).
+- macOS 12 or later, or Linux (`FoundationNetworking`). CI covers Swift 6.2 and 6.4 on Ubuntu
+  24.04 and Xcode 26.0.1 and 26.6 on macOS, in debug and release, with warnings as errors.
+
+## Using in your project
 
 ```swift
-.package(path: "../Perfect-AuthNet"),   // or your fork's URL
+.package(url: "https://github.com/PerfectlySoft/Perfect-AuthNet.git", from: "1.0.0"),
 ```
 
 ```swift
@@ -32,49 +43,51 @@ let client = AuthNetClient(
     environment: .sandbox          // .production when you go live
 )
 
-// Mobile/web: charge a tokenized nonce from Accept.js / Accept Mobile.
+// Charge a nonce produced by Accept.js or Accept Mobile on the client.
 let result = try await client.charge(
     amount: 49.99,
     payment: .nonce(value: opaqueDataValueFromClient),
-    order: OrderInfo(invoiceNumber: "INV-1001", description: "Scrubs set")
+    order: OrderInfo(invoiceNumber: "INV-1001", description: "Order 1001")
 )
 
 if result.approved {
-    print("charged — transaction \(result.transactionID)")
+    print("charged: transaction \(result.transactionID)")
 } else {
     print("declined: \(result.error ?? "unknown reason")")
 }
 ```
 
-A **declined** card is a normal returned `TransactionResult` with `approved == false` — not a thrown error. Errors are thrown only for transport failures, malformed responses, and gateway-level rejections (bad credentials, validation), via `AuthNetError`.
+A declined card isn't an error. `charge` returns a `TransactionResult` with `approved == false`.
+`AuthNetError` is thrown only for transport failures, malformed responses, and gateway-level
+rejections such as bad credentials or validation failures.
 
 ## Payment input
 
 ```swift
-// Preferred for storefronts — a nonce from the Accept.js / Accept Mobile SDK:
+// Preferred: a nonce from the Accept.js or Accept Mobile SDK.
 .nonce(value: "<opaque data value>")
 .opaqueData(descriptor: "COMMON.ACCEPT.INAPP.PAYMENT", value: "<value>")
 
-// Server-to-server or testing only — a raw card (you own the PCI scope):
+// Server-to-server or testing only. You take on the PCI scope.
 .creditCard(number: "4111111111111111", expiration: "2030-12", code: "123")
 ```
 
 ## Operations
 
 ```swift
-// Authorize + capture in one step (a standard charge)
+// Authorize and capture in one step (a standard charge).
 try await client.charge(amount: 49.99, payment: .nonce(value: nonce))
 
-// Authorize now, capture later
+// Authorize now, capture later.
 let auth = try await client.authorize(amount: 49.99, payment: .nonce(value: nonce))
-try await client.capture(transactionID: auth.transactionID)            // full amount
-try await client.capture(transactionID: auth.transactionID, amount: 40) // or a lower amount
+try await client.capture(transactionID: auth.transactionID)             // full amount
+try await client.capture(transactionID: auth.transactionID, amount: 40) // or less
 
-// Refund a settled transaction (needs the original card's last 4 + expiration)
+// Refund a settled transaction (needs the original card's last four digits and expiration).
 try await client.refund(transactionID: txnID, amount: 49.99,
                         cardLastFour: "1111", expiration: "2030-12")
 
-// Void an unsettled transaction
+// Void an unsettled transaction.
 try await client.void(transactionID: txnID)
 ```
 
@@ -82,28 +95,30 @@ try await client.void(transactionID: txnID)
 
 ```swift
 public struct TransactionResult {
-    let responseCode: ResponseCode   // .approved / .declined / .error / .heldForReview
-    let transactionID: String        // use to capture, refund, or void later
+    let responseCode: ResponseCode   // .approved, .declined, .error or .heldForReview
+    let transactionID: String        // for a later capture, refund or void
     let authCode: String?
     let accountNumber: String?       // masked, e.g. "XXXX1111"
     let accountType: String?         // e.g. "Visa"
     let avsResultCode: String?
     let cvvResultCode: String?
     let message: String?             // "code: description"
-    let error: String?               // "code: text" for declines/errors
+    let error: String?               // "code: text" for declines and errors
     var approved: Bool               // responseCode == .approved
 }
 ```
 
 ## Testing
 
-Offline tests (request encoding, response decoding, BOM handling, amount formatting) run with no network via a mocked `URLSession`:
+The offline tests (request encoding, response decoding, BOM handling, amount formatting) use a
+mocked `URLSession` and need no network:
 
 ```sh
 swift test
 ```
 
-Live sandbox tests are gated — supply sandbox credentials to run them against `apitest.authorize.net`:
+The live tests run against the Authorize.net sandbox (`apitest.authorize.net`) when you supply
+sandbox credentials:
 
 ```sh
 AUTHNET_TESTS=1 AUTHNET_LOGIN_ID=... AUTHNET_TRANSACTION_KEY=... swift test
@@ -111,11 +126,14 @@ AUTHNET_TESTS=1 AUTHNET_LOGIN_ID=... AUTHNET_TRANSACTION_KEY=... swift test
 
 ## Notes
 
-- The JSON API returns responses prefixed with a UTF-8 BOM; the client strips it before decoding (a common integration gotcha).
-- Pass a custom `URLSession` to `AuthNetClient(urlSession:)` for certificate pinning or test injection.
-- **Not yet covered:** customer profiles (CIM / saved cards), recurring billing (ARB), and webhooks — planned once the storefront needs stored payment methods.
-- This is early-stage, single-commit infrastructure (see Status above) — not yet exercised against production traffic.
+- The JSON API prefixes its responses with a UTF-8 byte-order mark. The client strips it before
+  decoding.
+- To pin certificates or inject a test session, pass your own `URLSession` to
+  `AuthNetClient(urlSession:)`.
+- Not yet covered: customer profiles (CIM, saved cards), recurring billing (ARB), and webhooks.
+- This package hasn't handled production traffic yet. Test against the sandbox before going
+  live.
 
 ## License
 
-No `LICENSE` file is present in this repository yet, and none is implied by this README. Until one is added, treat the source as all-rights-reserved; contact the repo owner before reuse.
+Apache 2.0. See [LICENSE](LICENSE).

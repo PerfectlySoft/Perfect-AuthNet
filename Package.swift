@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "PerfectAuthNet",
-    platforms: [.macOS(.v26)],
+    platforms: [.macOS(.v12)],
     products: [
         .library(name: "PerfectAuthNet", targets: ["PerfectAuthNet"]),
     ],
