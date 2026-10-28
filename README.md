@@ -91,6 +91,11 @@ try await client.refund(transactionID: txnID, amount: 49.99,
 try await client.void(transactionID: txnID)
 ```
 
+Amounts are `Decimal` and are sent with exactly two decimal places (`40` becomes `"40.00"`). An
+amount with more than two decimal places is rounded to the cent, half-to-even, the same way on
+macOS and Linux: `49.995` is sent as `50.00` and `49.985` as `49.98`. If your prices can have
+fractions of a cent, round them yourself first with the rule you want.
+
 ## Result
 
 ```swift
