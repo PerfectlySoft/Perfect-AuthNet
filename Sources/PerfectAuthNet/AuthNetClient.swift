@@ -193,13 +193,20 @@ public struct AuthNetClient: Sendable {
     }
 
     /// Formats a `Decimal` as a fixed two-decimal string (`"49.99"`), locale-independent.
+    /// Amounts with more than two decimal places are rounded half-to-even (`49.995` → `"50.00"`,
+    /// `49.985` → `"49.98"`), the same on every platform.
     static func formatAmount(_ amount: Decimal) -> String {
-        let formatter = NumberFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.numberStyle = .decimal
-        formatter.usesGroupingSeparator = false
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter.string(from: NSDecimalNumber(decimal: amount)) ?? "0.00"
+        var value = amount
+        var rounded = Decimal()
+        NSDecimalRound(&rounded, &value, 2, .bankers)
+        // `Decimal.description` always uses "." and never groups or uses exponents.
+        var text = rounded.description
+        let fraction = text.firstIndex(of: ".").map { text.distance(from: $0, to: text.endIndex) - 1 }
+        switch fraction {
+        case nil: text += ".00"
+        case 1?:  text += "0"
+        default:  break
+        }
+        return text
     }
 }

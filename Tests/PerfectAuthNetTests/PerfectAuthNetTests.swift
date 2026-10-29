@@ -115,6 +115,28 @@ struct PerfectAuthNetTests {
         #expect(AuthNetClient.formatAmount(Decimal(string: "0")!) == "0.00")
     }
 
+    @Test(arguments: [
+        ("49.995", "50.00"),   // half-to-even rounds up to the even cent
+        ("49.985", "49.98"),   // and down when the cent is already even
+        ("49.9951", "50.00"),
+        ("49.994", "49.99"),
+        ("0.004", "0.00"),
+        ("0.005", "0.00"),
+        ("0.015", "0.02"),
+        ("1234567.891", "1234567.89"),
+        ("100000000000000000000", "100000000000000000000.00"),
+        ("-12.345", "-12.34"),
+    ])
+    func amountFormattingRoundsToCents(input: String, expected: String) {
+        #expect(AuthNetClient.formatAmount(Decimal(string: input)!) == expected)
+    }
+
+    @Test func amountFormattingIgnoresCurrentLocale() {
+        // Decimal(string:locale:) with a comma locale still yields the same value; the output must use ".".
+        let amount = Decimal(string: "1234,5", locale: Locale(identifier: "de_DE"))!
+        #expect(AuthNetClient.formatAmount(amount) == "1234.50")
+    }
+
     @Test func stripBOMRemovesLeadingMarker() {
         let withBOM = Data([0xEF, 0xBB, 0xBF]) + Data("{}".utf8)
         #expect(AuthNetClient.stripBOM(withBOM) == Data("{}".utf8))
